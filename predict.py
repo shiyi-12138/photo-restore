@@ -1,230 +1,30 @@
 """
-Photo Restore - Old photo restoration using FLUX.1 Kontext
-Fixes scratches, damage, and colorizes old photos.
+Minimal test predictor — verify Cog pipeline works before adding FLUX
 """
 
-import os
 import time
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from cog import BasePredictor, Path, Input
-
-from flux.sampling import denoise, get_schedule, prepare_kontext, unpack
-from flux.util import configs, load_clip, load_t5
-from flux.model import Flux
-from flux.modules.autoencoder import AutoEncoder
-from safetensors.torch import load_file as load_sft
-from safety_checker import SafetyChecker
-from util import print_timing, generate_compute_step_map
-from weights import download_weights
-
-from flux.util import ASPECT_RATIOS
-
-KONTEXT_WEIGHTS_URL = "https://weights.replicate.delivery/default/black-forest-labs/kontext/release-candidate/kontext-dev.sft"
-KONTEXT_WEIGHTS_PATH = "./models/kontext/kontext-dev.sft"
-AE_WEIGHTS_URL = "https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/safetensors/ae.safetensors"
-AE_WEIGHTS_PATH = "./models/flux-dev/ae.safetensors"
-T5_WEIGHTS_URL = (
-    "https://weights.replicate.delivery/default/official-models/flux/t5/t5-v1_1-xxl.tar"
-)
-T5_WEIGHTS_PATH = "./models/t5"
-CLIP_URL = "https://weights.replicate.delivery/default/official-models/flux/clip/clip-vit-large-patch14.tar"
-CLIP_PATH = "./models/clip"
-
-
-# Optimized prompt for photo restoration
-def build_restore_prompt(auto_colorize: bool) -> str:
-    base = (
-        "Restore this old photograph. "
-        "Fix all scratches, tears, dust spots, creases, and physical damage. "
-        "Remove noise and grain. "
-        "Enhance facial details, sharpen edges, and improve overall clarity. "
-        "Preserve the original composition, subjects, and lighting direction exactly. "
-    )
-    if auto_colorize:
-        base += (
-            "Colorize the image naturally with realistic skin tones, "
-            "natural fabric colors, and appropriate background hues. "
-            "The colorization should look like an authentic color photograph, not artificial."
-        )
-    else:
-        base += "Keep the original black-and-white tones."
-    return base
 
 
 class Predictor(BasePredictor):
-    """Photo Restore - Old photo restoration with FLUX.1 Kontext"""
-
     def setup(self) -> None:
         import sys
-        
-        print("=== Photo Restore setup starting ===", flush=True)
-        self.device = torch.device("cuda")
-        print(f"Device: {self.device}, GPU: {torch.cuda.get_device_name(0)}", flush=True)
-        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB", flush=True)
-        
-        download_model_weights()
-
-        st = time.time()
-        print("Loading T5 (5.5GB model)...", flush=True)
-        self.t5 = load_t5(self.device, max_length=512, t5_path=T5_WEIGHTS_PATH)
-        print(f"T5 loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
-
-        st = time.time()
-        print("Loading CLIP...", flush=True)
-        self.clip = load_clip(self.device, clip_path=CLIP_PATH)
-        print(f"CLIP loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
-
-        st = time.time()
-        print("Loading FLUX Kontext model (12GB)...", flush=True)
-        self.model = _load_kontext_model(device=self.device)
-        print(f"Kontext loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
-
-        st = time.time()
-        print("Loading autoencoder...", flush=True)
-        self.ae = _load_ae_local(device=self.device)
-        print(f"AE loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
-
-        self.model.eval()
+        print("=== Minimal test starting ===", flush=True)
+        print(f"Python: {sys.version}", flush=True)
+        print(f"torch: {torch.__version__}", flush=True)
+        print(f"CUDA available: {torch.cuda.is_available()}", flush=True)
+        if torch.cuda.is_available():
+            print(f"GPU: {torch.cuda.get_device_name(0)}", flush=True)
+            print(f"VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f}GB", flush=True)
         print("=== Setup complete ===", flush=True)
 
-    def predict(
-        self,
-        image: Path = Input(description="Old photo to restore. JPEG/PNG/WebP supported."),
-        auto_colorize: bool = Input(
-            default=True,
-            description="Automatically colorize black-and-white photos. Turn off to keep B&W.",
-        ),
-        guidance: float = Input(
-            default=3.0,
-            ge=1.0,
-            le=10.0,
-            description="How strongly to follow the restoration instruction. Higher = more aggressive restoration.",
-        ),
-        seed: int = Input(
-            default=42,
-            description="Random seed for reproducible results.",
-        ),
-    ) -> Path:
-        """Restore an old photo: fix damage, enhance details, colorize."""
-        prompt = build_restore_prompt(auto_colorize=auto_colorize)
-
-        with torch.inference_mode():
-            image = self._run_inference(
-                prompt=prompt,
-                input_image=image,
-                num_inference_steps=28,
-                guidance=guidance,
-                seed=seed or int.from_bytes(os.urandom(2), "big"),
-                go_fast=True,
-            )
-
-        output_path = "/tmp/restored.png"
-        image.save(output_path, format="PNG")
-        return Path(output_path)
-
-    def _run_inference(
-        self,
-        prompt: str,
-        input_image: Path,
-        num_inference_steps: int,
-        guidance: float,
-        seed: int,
-        go_fast: bool,
-    ) -> Image.Image:
-        inp, final_height, final_width = prepare_kontext(
-            t5=self.t5,
-            clip=self.clip,
-            prompt=prompt,
-            ae=self.ae,
-            img_cond_path=str(input_image),
-            target_width=None,
-            target_height=None,
-            bs=1,
-            seed=seed,
-            device=self.device,
-        )
-
-        inp.pop("img_cond_orig", None)
-
-        if go_fast:
-            compute_step_map = generate_compute_step_map("go really fast", num_inference_steps)
-        else:
-            compute_step_map = generate_compute_step_map("none", num_inference_steps)
-
-        timesteps = get_schedule(num_inference_steps, inp["img"].shape[1], shift=True)
-
-        x = denoise(
-            self.model,
-            **inp,
-            timesteps=timesteps,
-            guidance=guidance,
-            compute_step_map=compute_step_map,
-        )
-
-        x = unpack(x.float(), final_height, final_width)
-        with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-            x = self.ae.decode(x)
-
-        x = x.clamp(-1, 1)
-        x = (x + 1) / 2
-        x = (x.permute(0, 2, 3, 1) * 255).to(torch.uint8).cpu().numpy()
-        return Image.fromarray(x[0])
-
-
-def download_model_weights():
-    """Download all required model weights"""
-    import sys
-    print("Checking model weights...", flush=True)
-    
-    if not os.path.exists(KONTEXT_WEIGHTS_PATH):
-        print(f"Downloading Kontext weights (~12GB)...", flush=True)
-        download_weights(KONTEXT_WEIGHTS_URL, Path(KONTEXT_WEIGHTS_PATH))
-        print("Kontext weights done", flush=True)
-    else:
-        print(f"Kontext weights found at {KONTEXT_WEIGHTS_PATH}", flush=True)
-        
-    if not os.path.exists(AE_WEIGHTS_PATH):
-        print("Downloading AE weights (~335MB)...", flush=True)
-        download_weights(AE_WEIGHTS_URL, Path(AE_WEIGHTS_PATH))
-        print("AE weights done", flush=True)
-    else:
-        print("AE weights found", flush=True)
-        
-    if not os.path.exists(T5_WEIGHTS_PATH):
-        print("Downloading T5 weights (~11GB)...", flush=True)
-        download_weights(T5_WEIGHTS_URL, Path(T5_WEIGHTS_PATH))
-        print("T5 weights done", flush=True)
-    else:
-        print("T5 weights found", flush=True)
-        
-    if not os.path.exists(CLIP_PATH):
-        print("Downloading CLIP weights...", flush=True)
-        download_weights(CLIP_URL, Path(CLIP_PATH))
-        print("CLIP weights done", flush=True)
-    else:
-        print("CLIP weights found", flush=True)
-    
-    print("All weights ready", flush=True)
-
-
-def _load_kontext_model(device: str | torch.device = "cuda"):
-    config = configs["flux-dev"]
-    with torch.device("meta"):
-        model = Flux(config.params).to(torch.bfloat16)
-
-    sd = load_sft(KONTEXT_WEIGHTS_PATH, device=str(device))
-    missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
-    if missing:
-        print(f"Missing keys: {missing}")
-    return model
-
-
-def _load_ae_local(device: str | torch.device = "cuda"):
-    config = configs["flux-dev"]
-    with torch.device("meta"):
-        ae = AutoEncoder(config.ae_params)
-
-    sd = load_sft(AE_WEIGHTS_PATH, device=str(device))
-    ae.load_state_dict(sd, strict=False, assign=True)
-    return ae
+    def predict(self, text: str = Input(default="Hello!", description="Text to draw")) -> Path:
+        print(f"Predict called with: {text}", flush=True)
+        img = Image.new("RGB", (512, 512), color=(30, 30, 60))
+        draw = ImageDraw.Draw(img)
+        draw.text((100, 240), text, fill=(255, 255, 255))
+        output = Path("/tmp/test.png")
+        img.save(str(output))
+        return output
