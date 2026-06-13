@@ -1,4 +1,4 @@
-# Absolute minimal config with Cog's built-in torch support
+# Cog V2 API format
 build:
   gpu: true
   cuda: "12.6"
@@ -6,4 +6,4 @@ build:
   python_version: "3.11"
   python_packages:
     - "Pillow"
-predict: "predict.py:Predictor"
+run: "predict.py:Predictor"
