@@ -1,11 +1,9 @@
-# Absolute minimal config
+# Absolute minimal config with Cog's built-in torch support
 build:
   gpu: true
   cuda: "12.6"
+  torch_version: "2.6.0"
   python_version: "3.11"
   python_packages:
-    - "torch"
     - "Pillow"
-  run:
-    - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 predict: "predict.py:Predictor"
