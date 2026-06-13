@@ -79,25 +79,7 @@ class Predictor(BasePredictor):
         self.ae = _load_ae_local(device=self.device)
         print(f"AE loaded in {time.time() - st:.1f}s")
 
-        st = time.time()
-        print("Compiling with torch.compile...")
-        self.model = torch.compile(self.model, dynamic=True)
-
-        # Warmup
-        self._warmup()
-        print(f"Setup complete in {time.time() - st:.1f}s")
-
-    def _warmup(self):
-        warmup_img = Path(__file__).parent / "lady.png"
-        if warmup_img.exists():
-            self._run_inference(
-                prompt=build_restore_prompt(auto_colorize=False),
-                input_image=warmup_img,
-                num_inference_steps=20,
-                guidance=2.5,
-                seed=42,
-                go_fast=True,
-            )
+        print("Setup complete")
 
     def predict(
         self,
