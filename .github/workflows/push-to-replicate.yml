@@ -19,4 +19,4 @@ jobs:
           COG_CLI_TOKEN: ${{ secrets.COG_CLI_TOKEN }}
         run: |
           echo "$COG_CLI_TOKEN" | cog login --token-stdin
-          cog push r8.im/shiyi-12138/photo-restore
+          cog push r8.im/shiyi-12138/photo-restore-v2

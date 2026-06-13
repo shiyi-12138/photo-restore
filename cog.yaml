@@ -1,41 +1,11 @@
-# Configuration for Cog
-# Reference: https://cog.run/yaml
-
+# Absolute minimal config
 build:
   gpu: true
   cuda: "12.6"
-
   python_version: "3.11"
-
-  system_packages:
-    - "libgl1"
-    - "libglib2.0-0t64"
-
   python_packages:
-    - "numpy<2"
-    - "einops"
-    - "fire"
-    - "huggingface-hub"
-    - "safetensors"
-    - "sentencepiece"
-    - "transformers==4.53.2"
-    - "tokenizers==0.21.2"
-    - "protobuf"
-    - "diffusers==0.34.0"
-    - "loguru"
-    - "pybase64"
-    - "pydash"
-    - "opencv-python-headless"
+    - "torch"
     - "Pillow"
-    - "invisible-watermark"
-
   run:
-    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.8.2/pget_linux_x86_64" && chmod +x /usr/local/bin/pget
     - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-    # Pre-download all model weights at BUILD time (not runtime) to avoid 10GB timeout
-    - mkdir -p models/kontext models/flux-dev models/t5 models/clip
-    - pget --log-level=WARNING https://weights.replicate.delivery/default/black-forest-labs/kontext/release-candidate/kontext-dev.sft models/kontext/kontext-dev.sft
-    - pget --log-level=WARNING https://weights.replicate.delivery/default/black-forest-labs/FLUX.1-dev/safetensors/ae.safetensors models/flux-dev/ae.safetensors
-    - pget --log-level=WARNING https://weights.replicate.delivery/default/official-models/flux/t5/t5-v1_1-xxl.tar /tmp/t5.tar && tar -xf /tmp/t5.tar -C models/t5 && rm /tmp/t5.tar
-    - pget --log-level=WARNING https://weights.replicate.delivery/default/official-models/flux/clip/clip-vit-large-patch14.tar /tmp/clip.tar && tar -xf /tmp/clip.tar -C models/clip && rm /tmp/clip.tar
 predict: "predict.py:Predictor"
