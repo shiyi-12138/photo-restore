@@ -113,7 +113,7 @@ class Predictor(BasePredictor):
             description="How strongly to follow the restoration instruction. Higher = more aggressive restoration.",
         ),
         seed: int = Input(
-            default=None,
+            default=42,
             description="Random seed for reproducible results.",
         ),
     ) -> Path:
