@@ -56,30 +56,37 @@ class Predictor(BasePredictor):
     """Photo Restore - Old photo restoration with FLUX.1 Kontext"""
 
     def setup(self) -> None:
+        import sys
+        
+        print("=== Photo Restore setup starting ===", flush=True)
         self.device = torch.device("cuda")
+        print(f"Device: {self.device}, GPU: {torch.cuda.get_device_name(0)}", flush=True)
+        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB", flush=True)
+        
         download_model_weights()
 
         st = time.time()
-        print("Loading T5...")
+        print("Loading T5 (5.5GB model)...", flush=True)
         self.t5 = load_t5(self.device, max_length=512, t5_path=T5_WEIGHTS_PATH)
-        print(f"T5 loaded in {time.time() - st:.1f}s")
+        print(f"T5 loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
 
         st = time.time()
-        print("Loading CLIP...")
+        print("Loading CLIP...", flush=True)
         self.clip = load_clip(self.device, clip_path=CLIP_PATH)
-        print(f"CLIP loaded in {time.time() - st:.1f}s")
+        print(f"CLIP loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
 
         st = time.time()
-        print("Loading Kontext model...")
+        print("Loading FLUX Kontext model (12GB)...", flush=True)
         self.model = _load_kontext_model(device=self.device)
-        print(f"Kontext model loaded in {time.time() - st:.1f}s")
+        print(f"Kontext loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
 
         st = time.time()
-        print("Loading autoencoder...")
+        print("Loading autoencoder...", flush=True)
         self.ae = _load_ae_local(device=self.device)
-        print(f"AE loaded in {time.time() - st:.1f}s")
+        print(f"AE loaded in {time.time() - st:.1f}s, GPU mem: {torch.cuda.memory_allocated()/1e9:.1f}GB", flush=True)
 
-        print("Setup complete")
+        self.model.eval()
+        print("=== Setup complete ===", flush=True)
 
     def predict(
         self,
@@ -167,18 +174,38 @@ class Predictor(BasePredictor):
 
 def download_model_weights():
     """Download all required model weights"""
+    import sys
+    print("Checking model weights...", flush=True)
+    
     if not os.path.exists(KONTEXT_WEIGHTS_PATH):
-        print("Downloading Kontext weights...")
+        print(f"Downloading Kontext weights (~12GB)...", flush=True)
         download_weights(KONTEXT_WEIGHTS_URL, Path(KONTEXT_WEIGHTS_PATH))
+        print("Kontext weights done", flush=True)
+    else:
+        print(f"Kontext weights found at {KONTEXT_WEIGHTS_PATH}", flush=True)
+        
     if not os.path.exists(AE_WEIGHTS_PATH):
-        print("Downloading AE weights...")
+        print("Downloading AE weights (~335MB)...", flush=True)
         download_weights(AE_WEIGHTS_URL, Path(AE_WEIGHTS_PATH))
+        print("AE weights done", flush=True)
+    else:
+        print("AE weights found", flush=True)
+        
     if not os.path.exists(T5_WEIGHTS_PATH):
-        print("Downloading T5 weights...")
+        print("Downloading T5 weights (~11GB)...", flush=True)
         download_weights(T5_WEIGHTS_URL, Path(T5_WEIGHTS_PATH))
+        print("T5 weights done", flush=True)
+    else:
+        print("T5 weights found", flush=True)
+        
     if not os.path.exists(CLIP_PATH):
-        print("Downloading CLIP weights...")
+        print("Downloading CLIP weights...", flush=True)
         download_weights(CLIP_URL, Path(CLIP_PATH))
+        print("CLIP weights done", flush=True)
+    else:
+        print("CLIP weights found", flush=True)
+    
+    print("All weights ready", flush=True)
 
 
 def _load_kontext_model(device: str | torch.device = "cuda"):
